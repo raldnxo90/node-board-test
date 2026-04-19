@@ -1,0 +1,32 @@
+#0 컨트롤러 서비스 분리
+
+#1 npm install passport passport-local express-session bcrypt 
+passport: Express 기반 웹 어플리케이션에서 로그인 처리를 담당하는 모듈
+
+#2 비밀번호 해싱
+userService
+    //비밀번호 해싱
+    const hashedPassword = await bcrypt.hash(password, 10); 추가
+
+#3 config/passport.js
+
+#4 app.js에 등록
+
+#4 login.ejs
+
+#5 userRouter.js
+    
+    const passport = require('../config/passport');
+
+    router.post('/login', passport.authenticate('local', {// 로그인 처리, passport의 local 전략 사용
+        successRedirect: '/',                  // 성공 시 메인으로
+        failureRedirect: '/user/login',        // 실패 시 로그인 페이지로
+        failureMessage: true                   // 실패 메시지 세션에 저장
+    }));
+코드 추가
+
+#6 로그아웃 추가
+
+#7 마이페이지
+
+

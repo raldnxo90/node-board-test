@@ -1,0 +1,104 @@
+app.use(session({...}))        // ① 세션 미들웨어
+app.use(passport.initialize()) // ② passport 초기화
+app.use(passport.session())    // ③ passport 세션 연동
+```
+
+**① `express-session`**
+- 모든 요청에서 쿠키의 `connect.sid`를 읽어 서버 세션 저장소에서 `req.session` 객체를 복원해줌
+- passport는 이 `req.session` 안에 데이터를 씀 (`req.session.passport.user`)
+
+**② `passport.initialize()`**
+- `req.user = undefined` 로 초기화
+- passport가 req 객체에 `.login()`, `.logout()` 메서드를 붙여줌
+
+**③ `passport.session()`**
+- 매 요청마다 `req.session.passport.user`(세션에 저장된 ID)를 꺼내서 `deserializeUser`를 실행
+- 결과를 `req.user`에 붙임
+
+---
+
+### 🔐 로그인 요청 시 흐름 (최초 1회)
+```
+POST /user/login  (email, password 전송)
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  passport.authenticate('local')  미들웨어 실행       │
+│                                                      │
+│  LocalStrategy 콜백 호출                             │
+│  async (email, password, done) => {                  │
+│                                                      │
+│    1. userService.findUserByEmail(email)             │
+│       → DB에서 사용자 조회                            │
+│       → 없으면: done(null, false, {message:'...'})   │
+│                                                      │
+│    2. bcrypt.compare(password, user.password)        │
+│       → 비밀번호 해시 비교                            │
+│       → 불일치: done(null, false, {message:'...'})   │
+│                                                      │
+│    3. 성공: done(null, user)                         │
+│  }                                                   │
+└─────────────────────────────────────────────────────┘
+         │ done(null, user) 호출됨
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  serializeUser 실행 (로그인 성공 시 딱 1번만)          │
+│                                                      │
+│  (user, done) => {                                   │
+│    done(null, user._id)  // MongoDB ObjectId         │
+│  }                                                   │
+│                                                      │
+│  → req.session.passport.user = user._id             │
+│  → 세션 저장소에 기록                                 │
+│  → 클라이언트에 Set-Cookie: connect.sid=abc123       │
+└─────────────────────────────────────────────────────┘
+         │
+         ▼
+    req.user = user 객체 (이 요청에서는 전체 user)
+    로그인 완료 → 리다이렉트 or 응답
+```
+
+---
+
+### 🔄 로그인 후 모든 요청의 흐름
+```
+GET /board  (쿠키: connect.sid=abc123)
+         │
+         ▼
+① express-session 미들웨어
+  → 쿠키에서 abc123 읽음
+  → 세션 저장소에서 조회
+  → req.session = { passport: { user: "6507f1..." } }  복원
+         │
+         ▼
+② passport.initialize()
+  → req.user = undefined 로 세팅
+         │
+         ▼
+③ passport.session()  ← 이게 매 요청마다 실행되는 핵심!
+  → req.session.passport.user = "6507f1..." 발견
+  → deserializeUser("6507f1...", done) 호출
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  deserializeUser 실행                                │
+│                                                      │
+│  async (id, done) => {                               │
+│    const user = await userService.findUserById(id)   │
+│    done(null, user)  // DB에서 최신 정보 조회         │
+│  }                                                   │
+└─────────────────────────────────────────────────────┘
+         │
+         ▼
+  req.user = { _id, email, name, ... }  ← 완성!
+         │
+         ▼
+④ 커스텀 미들웨어
+  res.locals.user = req.user || null
+  → 모든 EJS 템플릿에서 user 변수 사용 가능(전역변수)
+         │
+         ▼
+⑤ 라우터 실행
+  req.user로 로그인 여부 확인, 사용자 정보 활용
+
+

@@ -1,0 +1,21 @@
+#1 express-validator 설치
+- npm install express-validator
+
+#2 middlewares/validationmiddleware.js
+- joinValidationRules 작성 (이메일, 비밀번호, 이름)
+- modifyValidationRules 작성 (비밀번호, 이름)
+- validate 작성 (API용 JSON 응답 - 나중에 쓸 것)
+
+#3 routes/userRouter.js 설정
+- validate 제거 (SSR 구조에서는 컨트롤러에서 직접 처리)
+- uploadProfile.single('profileImage'), joinValidationRules, userController.postJoin 순서로 연결
+
+#4 controllers/userController.js 설정
+- validationResult import 추가
+- postJoin: validationResult로 검사 결과 수집 → 실패 시 errors, formData와 함께 페이지 재렌더링
+- postModify: validationResult로 검사 결과 수집 → 실패 시 errors와 함께 페이지 재렌더링
+
+#5 views/user/join.ejs 설정
+- errors.email / errors.password / errors.name → 빨간 에러 메시지 출력
+- formData로 입력값 유지
+- DOMContentLoaded: 재렌더링 시 isEmailChecked = true 처리

@@ -1,0 +1,130 @@
+<nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+        <a class="navbar-brand" href="/">솔데스크</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="nav">
+            <ul class="navbar-nav ms-auto">
+                <% if (user) { %>
+
+                    <!-- 알림 버튼 -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#notiModal">
+                            알림 <span id="notiCount" class="badge bg-danger">0</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="/user/info">
+                            <%= user.name %> 마이페이지
+                        </a>
+                    </li>
+                    <li class="nav-item"><a class="nav-link" href="/user/logout">로그아웃</a></li>
+                    <% } else { %>
+                        <li class="nav-item"><a class="nav-link" href="/user/login">로그인</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/user/join">회원가입</a></li>
+                        <% } %>
+            </ul>
+
+        </div>
+    </div>
+</nav>
+
+<!-- 알림 모달 -->
+<div class="modal fade" id="notiModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">알림</h5>
+                <button id="notiClear" class="btn btn-sm btn-outline-danger me-2">전체 삭제</button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul id="notiList" class="list-group">
+                    <li class="list-group-item text-muted">알림이 없습니다.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<% if (user) { %>
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- socket.io: 클라이언트 측 소켓 연결 -->
+    <script>
+        const user = '<%- JSON.stringify(user) %>';
+        // JSON.stringify(user): 사용자 객체를 문자열로 변환
+        const socket = io({ auth: { user: JSON.parse(user) } });
+        // io(): 서버와 소켓 연결 시도 -> auth에 사용자 정보 전달
+        // JSON.parse(user): 문자열로 전달된 사용자 정보를 다시 객체로 변환
+
+        socket.on('connect', () => console.log('소켓 연결 성공! / 소켓ID:', socket.id));
+        socket.on('connect_error', (err) => console.error('소켓 연결 에러:', err));
+        socket.on('disconnect', (reason) => console.log('연결 끊김:', reason));
+
+        const notiCount = document.getElementById('notiCount');// 알림 개수 표시 요소
+        const notiList = document.getElementById('notiList');// 알림 목록 요소
+
+        // 알림 화면에 렌더링
+        function renderNotifications(notifications) {
+            notiList.innerHTML = '';
+            if (notifications.length === 0) {
+                notiList.innerHTML = '<li class="list-group-item text-muted">알림이 없습니다.</li>';
+            } else {
+                notifications.forEach((noti) => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item';
+
+                    if (noti.boardId) {
+                        // 링크로 만들기
+                        const a = document.createElement('a');
+                        a.href = `/board/info/${noti.boardId}`;
+                        a.textContent = noti.message;
+                        a.className = 'text-decoration-none';
+                        li.appendChild(a);
+                    } else {
+                        li.textContent = noti.message;
+                    }
+
+                    notiList.appendChild(li);
+                });
+            }
+        }
+        // 페이지 로드 시 DB에서 안읽은 알림 불러오기
+        async function loadNotifications() {
+            try {
+                const res = await fetch('/notification');
+                if (!res.ok) {
+                    return;
+                }// 응답이 정상적이지 않으면 함수 종료
+                const data = await res.json();
+                console.log('불러온 알림:', data);
+                notiCount.textContent = data.length;
+                renderNotifications(data);
+            } catch (err) {
+                console.error('알림 로드 실패:', err);
+            }
+        }
+
+        loadNotifications();// 페이지 로드 시 알림 불러오기
+
+        // 새 댓글 알림 수신 -> DB에서 다시 불러오기
+        socket.on('newComment', () => {
+            loadNotifications();
+        });
+
+        // 모달 열 때 읽음 처리
+        document.getElementById('notiModal').addEventListener('show.bs.modal', async () => {
+            await fetch('/notification/read', { method: 'PATCH' });
+            notiCount.textContent = 0;
+        });
+
+        // 전체 삭제
+        document.getElementById('notiClear').addEventListener('click', async () => {
+            await fetch('/notification', { method: 'DELETE' });
+            notiCount.textContent = 0;
+            renderNotifications([]);
+        });
+    </script>
+    <% } %>

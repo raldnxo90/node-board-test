@@ -1,0 +1,32 @@
+# 모듈 설치    
+    npm install passport passport-local express-session bcryptjs
+
+    passport: 인증 처리 전담 미들웨어
+    passport-local: 로컬 인증 처리(ID, PASSWORD)
+    express-session: 로그인 상태 유지
+    bcryptjs: 비밀번호 해싱
+
+# app.js
+    const session = require('express-session');
+    const passport = require('./config/passport');//추후 설정
+
+    // 세션 설정 (passport보다 먼저)
+    app.use(session({
+        secret: process.env.SESSION_SECRET,  
+        saveUninitialized: false, 
+    }));
+
+    // Passport 초기화 및 세션 사용
+    app.use(passport.initialize());
+    app.use(passport.session());
+
+# passport.js
+
+# userRouter.js
+router.post('/login', passport.authenticate('local', {
+    successRedirect: '/',                  // 성공 시 메인으로
+    failureRedirect: '/user/login',        // 실패 시 로그인 페이지로
+    failureMessage: true                   // 실패 메시지 세션에 저장
+}));
+
+

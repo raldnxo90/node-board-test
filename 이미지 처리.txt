@@ -1,0 +1,246 @@
+#0 multer(파일 업로드 처리 라이브러리,  multipart/form-data 형식의 요청에서 파일을 추출하여 서버에 저장하는 기능 제공)
+    npm install multer 
+
+#1 프로필 이미지
+
+#1-1 User.js 스키마에 이미지 추가
+    const userSchema = new mongoose.Schema({
+        ...,
+        profileImage: { type: String }
+=> 추가
+    }, { timestamps: true });
+
+#1-2 upload.js 만들기
+    const multer = require('multer');
+    const path = require('path');
+
+    const uploadProfile = multer({
+        storage: 업로드한 파일 저장할 공간
+        limits: 업로드 파일 용량 제한
+        fileFilter: 어떤 형식의 파일만 허용할지 결정
+    });
+    module.exports = { uploadProfile };
+
+
+#1-3 upload.js > uploadProfile의 옵션 객체 값을 공통함수로 만들기
+
+    // 파일명 생성 함수
+    const makeFilename = (req, file, cb) => {
+        const ext = path.extname(file.originalname); // 확장자 추출 (예: .jpg, .png, .pdf)
+        cb(null, Date.now() + ext); // 에러 없음(null), 타임스탬프 + 확장자로 파일명 생성
+    };
+    //프로필 이미지 저장 설정
+    const profileStorage = multer.diskStorage({
+        destination: (req, file, cb) => {
+            cb(null, 'public/uploads/profile'); // 프로필 이미지 저장 경로
+        },
+        filename: makeFilename
+    }); 
+    //프로필 이미지 필터
+    const imageFilter = (req, file, cb) => {
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+        if (allowedMimeTypes.includes(file.mimetype)) {
+            cb(null, true); // 허용된 이미지 형식 -> 업로드 허용
+        } else {
+            cb(new Error('이미지 파일만 업로드 가능합니다. (jpeg, png, webp)')); // 허용되지 않은 형식 -> 업로드 거부
+        }
+    };
+    const uploadProfile = multer({
+        storage: profileStorage,
+        limits: { fileSize: 5 * 1024 * 1024 }, // 5MB(1024 * 1024 -> 1MB)
+        fileFilter: imageFilter
+    });
+    ...
+
+#1-4 회원가입(join.ejs)에서 이미지를 form 태그로 서버에 전송할 수 있게 수정
+    <form action="/user/join" method="post" enctype="multipart/form-data">
+    ...
+    <div class="col-12 text-center mb-3">
+        <img id="previewImg" src="/image/default-profile.png" class="rounded-circle mb-2" style="width:100px; height:100px; object-fit:cover;">
+        <div>
+            <label for="profileImage" class="btn btn-outline-secondary btn-sm">
+                사진 선택
+            </label>
+            <input type="file" id="profileImage" name="profileImage" accept="image/*" class="d-none">
+        </div>
+    </div>
+    ...
+    
+#1-4_2 join.ejs 이미지 미리보기 스크립트(선택사항) 
+    ...
+    <!-- 미리보기 스크립트 -->
+    <script>
+        document.getElementById('profileImage').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    document.getElementById('previewImg').src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    </script>
+
+#1-5 userRouter.js에 uploadProfile을 불러와 업로드 이미지 처리
+    ...
+    const { uploadProfile } = require('../config/upload');
+    ...
+    router.post('/join',
+        uploadProfile.single('profileImage'),   
+=> 추가
+        //multer가 처리하고 req객체에 담은 파일을 서비스에서 처리
+        joinValidationRules,
+        validate('user/join'),
+        userController.postJoin
+    );
+
+#1-6 userController.js 수정
+    const postJoin = async (req, res, next) => {
+        const { email, password, name, address } = req.body;
+        try {
+            await userService.createUser({ email, password, name, address, file: req.file }); => 추가
+            res.redirect('/user/login');
+
+        } catch (error) {
+            console.error('회원가입 실패:', error);
+            next(error); // 에러 미들웨어로 넘겨 500 페이지 렌더링
+        }
+    };
+
+#1-7 userService.js 수정
+    //회원가입 서비스
+    async function createUser({ email, password, name, address, file }) {
+=> file 추가
+    
+        ...
+        // 프로필 이미지 처리 (업로드된 파일이 있는 경우, 없으면 default-profile.png로 DB에 저장)
+        const profileImage = file
+            ? file.filename
+            : 'default-profile.png';
+
+        const newUser = new User({
+            email,
+            password: hashedPassword,
+            name,
+            address,
+            profileImage
+=> profileImage 추가
+        });
+
+        await newUser.save();
+    }
+
+== 로그인한 회원의 프로필 이미지는 passport.js에서 세션에 담은 user에서 가져옴 ==
+    const user = await userService.findUserByEmail(email);
+    // 로그인 성공 시 DB에 저장된 회원의 이미지도 user에 삽입
+
+#1-8 info.ejs에서 저장된 이미지 불러오기
+    ...
+    <img src="/uploads/profile/<%= user.profileImage %>" 
+        alt="프로필 이미지" 
+        class="rounded-circle mb-3"
+        style="width: 120px; height: 120px; object-fit: cover;"> 
+    ...
+=> 세션에 로그인한 회원(user)이 가지고 있는 profileImage 불러오기
+
+#1-9 
+
+#2 게시판 이미지
+
+#2-1 Board.js 스키마에 파일 추가
+    const boardSchema = new mongoose.Schema({
+    ...
+        file: {
+            type: String,
+            default: null
+        },
+    ...
+
+#2-2 upload.js
+    ...
+    const boardStorage = multer.diskStorage({
+        destination: (req, file, cb) => {
+            cb(null, 'public/uploads/board'); // 게시판 첨부파일 저장 경로
+        },
+        filename: makeFilename
+    });
+    
+    const uploadBoard = multer({
+        storage: boardStorage,
+        limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+        fileFilter: imageFilter
+    });
+
+    module.exports = { uploadProfile, uploadBoard };
+=> uploadBoard 추가
+
+#2-3 write.ejs
+    <form action="/board/write" method="post" enctype="multipart/form-data">
+=> enctype="multipart/form-data" 추가
+    ...
+    <div class="mb-3">
+        <label for="uploadFile" class="form-label">첨부 이미지</label>
+        <input type="file" class="form-control" name="uploadFile" />
+    </div>
+=> 추가
+
+#2-4 boardRouter.js
+    ...
+    const { uploadBoard } = require('../config/upload');
+=> 추가
+    // 게시글 작성 처리
+    router.post('/write', uploadBoard.single('uploadFile'), boardController.postWrite);
+    ...
+=> uploadBoard.single('uploadFile') 추가
+
+#2-5 boardController.js
+    //게시글 작성 처리
+    const postWrite = async (req, res, next) => {
+    ...
+        try {
+            await boardService.createBoard({
+                title,
+                content,
+                author: req.user.id,
+                category,
+                file: req.file,       // multer가 붙여주는 파일 객체 (없으면 undefined)
+            });
+    ...
+=> file: req.file, 추가
+
+#2-6 boardService.js
+// 게시글 작성 서비스
+    async function createBoard({ title, content, author, category, file }) {
+=> file 추가
+        // 파일이 있으면 multer가 저장한 파일명(file.filename)을 사용, 없으면 null
+        const boardFile = file ? file.filename : null;
+=> 추가
+        const newBoard = new Board({
+            title,
+            content,
+            author,
+            category,
+            file: boardFile,
+        });
+=> file: boardFile, 추가
+        await newBoard.save();
+        return newBoard;
+    }
+
+== 게시글 상세페이지에서 이미지 불러오기 ==
+#2-7 boardService.js 
+    const board = await Board.findById(boardId) 
+=> 확인(게시글 이미지도 board에 담아 가져옴(file로 가져옴))
+
+#2-8 info.ejs 
+    ...
+    <% if (board.file) { %>
+        <img src="/uploads/board/<%= board.file %>" class="img-fluid mb-3" alt="게시글 이미지">
+        <% } else { %>
+            <div class="placeholder-img mb-3" style="height: 280px;">이미지 없음</div>
+    <% } %>
+=> 추가(파일이 없으면 '이미지 없음', 있으면 DB에 저장된 파일 이름으로 이미지 불러오기)
+
+

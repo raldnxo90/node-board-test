@@ -1,0 +1,26 @@
+#1 초기 설정
+npm init -y
+npm install express dotenv express-session passport mongoose ejs
+
+- express: Node.js 웹 서버 프레임워크, 라우팅/미들웨어 등 웹 서버 기능 전반을 담당
+- .env 파일의 환경변수를 process.env로 불러옴, API 키, 비밀번호 같은 민감한 정보를 코드에 직접 안 써도 됨
+- HTML에 JS 문법을 섞어 쓸 수 있는 뷰 템플릿 엔진
+
+jsonwebtoken?
+npm install --save-dev nodemon
+
+#2 환경변수(.env)
+
+#3 DB 연결(config/database.js)
+/node-board??ssl=true 앞에 DB 이름 끼워넣기
+
+#4 메인 애플리케이션(app.js)
+
+#5 package.json 스크립트
+{
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  }
+}
+추가

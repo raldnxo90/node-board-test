@@ -1,0 +1,157 @@
+== oAuth(open Authorization) 개념 ==
+사용자가 비밀번호를 직접 공유하지 않고, 제3자 애플리케이션이 특정 리소스에 접근할 수 있도록 허가하는 인가 프로토콜
+클라이언트 서버가 회원의 로그인 정보/자원을 Resource Server에 요청해 대신 로그인
+
+== 구글 oAuth ==
+
+#1 oAuth 설정
+https://console.cloud.google.com/apis/dashboard?project=xenon-heading-473005-s9
+
+# 0 라이브러리 설치
+    npm install passport-google-oauth20
+
+# 1 .env에 클라이언트ID, 시크릿 키 추가
+    GOOGLE_CLIENT_ID = 발급받은 클라이언트 ID키
+    GOOGLE_CLIENT_SECRET = 발급받은 시크릿 키
+
+# 2 User.js에 스키마 규칙 추가
+    ...
+    provider: {
+        type: String,
+        enum: ['local', 'google', 'naver', 'kakao'],
+        default: 'local'
+    }, 
+    ...
+
+# 2 passpor에 구글 로그인 기능 추가
+    ...
+    const GoogleStrategy = require('passport-google-oauth20').Strategy;
+
+
+    passport.use(new GoogleStrategy({
+        clientID: process.env.GOOGLE_CLIENT_ID, // Google Cloud Console에서 발급
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET, // Google Cloud Console에서 발급
+        callbackURL: '/auth/google/callback' // 구글 인증 후 리디렉션될 URL(Google Cloud Console에 등록한 URI와 반드시 일치해야 함)
+    }, async (accessToken, refreshToken, profile, done) => {
+
+        try {
+            const email = profile.emails?.[0]?.value; // 구글에서 제공하는 이메일 주소
+            let user = await userService.findUserByEmail(email);
+            // 같은 이메일로 가입된 로컬 유저가 있는지 확인(계정 연동)
+
+            if (user) {
+                return done(null, user); // 기존 로컬 유저로 로그인
+            }
+
+            // 새로운 구글 유저 생성
+            const newUser = await userService.createGoogleUser(
+                {
+                    email,                  // 구글에서 제공하는 이메일 저장
+                    name: profile.displayName, // 구글에서 제공하는 이름 저장
+                    avatar: profile.photos?.[0]?.value, // 구글에서 제공하는 프로필 사진 저장
+                    address: '', // 구글에서 주소 정보는 제공하지 않으므로 빈 문자열로 초기화
+                    provider: 'google' // 로그인 방식 구분 위해 provider 필드에 'google' 저장
+                });
+            return done(null, newUser);// 새로 생성된 구글 유저로 로그인
+
+        } catch (err) {
+            return done(err);
+        }
+    }));
+
+# 2 userService.js에 소셜 회원 DB 추가 함수 추가
+    ...
+    const createSocialUser = async ({ email, name, avatar, provider }) => {
+        const newUser = new User({
+            email,
+            name,
+            profileImage: avatar || 'default-profile.png',
+            provider  // 'google' | 'naver' | 'kakao'
+        });
+        await newUser.save();
+        return newUser;
+    };
+    module.exports = { createUser, findUserByEmail, findUserById, checkEmailAvailability, updateUser, deleteUser, createSocialUser };
+==> createSocialUser 추가
+
+# 3 login.ejs에 소셜 로그인 태그 추가
+    ...
+    <!-- 소셜 로그인 -->
+    <hr class="my-3">
+    <div class="d-grid gap-2">
+        <a href="/auth/google" class="btn btn-outline-danger">Google로 로그인</a>
+        <a href="/auth/kakao" class="btn btn-warning">카카오로 로그인</a>
+        <a href="/auth/naver" class="btn btn-success">네이버로 로그인</a>
+    </div>
+    ...
+
+# 4 router > authRouter.js 만들기
+    const express = require('express');
+    const router = express.Router();
+    const passport = require('../config/passport');
+
+    // 구글 로그인 시작
+    router.get('/google',
+        passport.authenticate('google', {
+            scope: ['profile', 'email']
+            //scope: 구글에서 가져올 사용자 정보 범위 지정, profile: 기본 프로필 정보(이름, 프로필 사진 등), email: 이메일 주소
+        })
+    );
+
+    // 구글 인증 후 애플리케이션 서버가 받는 요청
+    router.get('/google/callback',
+==> 반드시 구글클라우드에 명시한 콜백 URL과 일치해야 함
+        passport.authenticate('google', {
+            failureRedirect: '/user/login',
+            successRedirect: '/'
+        })
+    );
+
+    module.exports = router;
+
+# 5 app.js에 라우터 임포트 및 등록
+    ...
+    const authRouter = require('./routes/authRouter'); 
+    ...
+    app.use('/auth', authRouter); // OAuth 라우터 등록
+    ...
+
+### 소셜 회원 가입 및 로그인해보기 ###
+
+#6 권한 구분(소셜 로그인 회원은 회원수정 불가)
+   //회원정보 수정 서비스
+    async function updateUser(userId, { password, name, address, file }) {
+        // 소셜 회원 수정 차단
+        if(user.provider !== 'local') {
+            const error = new Error('소셜 로그인 회원은 정보 수정이 불가능합니다.');
+            error.status = 403;//권한 없음
+            throw error;
+        }
+    } 
+
+    //회원탈퇴 
+    async function deleteUser(userId, password) {
+    ...
+        // 로컬 회원만 비밀번호 확인 후 탈퇴 처리, 소셜 회원은 바로 탈퇴 처리
+        if (user.provider !== 'local') {
+            const isMatch = await bcrypt.compare(password, user.password);
+            if (!isMatch) {
+                const error = new Error('비밀번호가 일치하지 않습니다');
+                error.status = 400;// 400: Bad Request, 클라이언트의 요청이 잘못되었음을 나타냄 (예: 유효하지 않은 입력)
+                throw error;
+            }
+        }
+        await User.findByIdAndDelete(userId);
+    }
+
+
+
+
+    npm install passport-naver-v2
+
+
+
+
+    https://developers.kakao.com
+
+    

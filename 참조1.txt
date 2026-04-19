@@ -1,0 +1,20 @@
+#1 초기 설정
+npm init -y
+npm install express mongoose dotenv bcrypt jsonwebtoken
+npm install --save-dev nodemon
+
+#2 환경변수(.env)
+
+#3 DB 연결(config/database.js)
+
+#4 메인 애플리케이션(app.js)
+
+#5 package.json 스크립트
+{
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  }
+}
+추가
+
